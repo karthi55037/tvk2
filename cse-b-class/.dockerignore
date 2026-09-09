@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+dev.db
+*.db
+*.db-journal
+storage
+storage-test
+test-*.db
+tsconfig.tsbuildinfo
+coverage

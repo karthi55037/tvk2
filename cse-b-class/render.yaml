@@ -1,0 +1,35 @@
+# Render blueprint — "New +" → "Blueprint" → pick this repo after merging.
+# Render's free plan has no persistent disk; this uses starter + 1 GB disk so the
+# SQLite DB and uploaded files survive restarts.
+services:
+  - type: web
+    name: cse-b-class
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /offline.html
+    disk:
+      name: cseb-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        value: file:/data/app.db
+      - key: STORAGE_DIR
+        value: /data/storage
+      - key: APP_TZ
+        value: Asia/Kolkata
+      - key: MAX_UPLOAD_MB
+        value: "10"
+      - key: APP_ORIGIN
+        sync: false # set to your Render URL (https://…onrender.com)
+      - key: JWT_SECRET
+        generateValue: true
+      - key: VAPID_PUBLIC_KEY
+        sync: false # run `npm run setup` locally and copy the generated values in
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:admin@example.com

@@ -1,0 +1,40 @@
+# Fly.io config — `fly launch` picks this up (run `fly launch` from cse-b-class/).
+# Mumbai region (closest to Chennai), 1 persistent volume for DB + uploads.
+app = "cse-b-class"
+primary_region = "bom"
+
+[build]
+
+[env]
+  PORT = "3000"
+  HOSTNAME = "0.0.0.0"
+  APP_TZ = "Asia/Kolkata"
+  MAX_UPLOAD_MB = "10"
+  DATABASE_URL = "file:/data/app.db"
+  STORAGE_DIR = "/data/storage"
+  # Set these with: fly secrets set JWT_SECRET=… VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… APP_ORIGIN=https://cse-b-class.fly.dev
+
+[[mounts]]
+  source = "cseb_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false # keep one machine always on: SSE + Web Push need it
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+[deploy]
+  release_command = "node scripts/migrate.mjs"
+
+[checks.health]
+  port = 3000
+  type = "http"
+  path = "/offline.html"
+  interval = "30s"
+  timeout = "5s"

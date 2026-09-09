@@ -121,11 +121,28 @@ npm test        # vitest — fresh isolated DB per process
 | Realtime (SSE) + offline PWA | `src/server/realtime.ts`, `src/app/api/realtime`, `public/sw.js`, `public/offline.html` |
 | Error handling & friendly messages | `src/lib/api.ts` (`handle` wraps every route), error boundaries in `providers.tsx` |
 
-## Deployment notes
+## Deployment
 
-1. Provision a host (or container) with Node 20+. Copy the repo, run `npm ci --omit=dev` for production deps (keep dev deps if you want `npm test` on the box).
-2. `npm run setup` to generate `.env` (or supply the environment variables yourself — use a strong `JWT_SECRET`; point `DATABASE_URL` at a Turso URL for managed/replicated storage if desired).
-3. `npm run db:migrate` (also runs automatically on `npm start`), then optionally `npm run db:seed` for the demo class — skip the seed in production and use the Excel import instead.
-4. Serve behind TLS (required for service worker + push on iOS). `npm start` binds `0.0.0.0:3000`; put nginx/Caddy/ALB in front for TLS and set `APP_ORIGIN` to the public origin.
-5. Back up: the SQLite database file (or Turso) and `STORAGE_DIR`.
-6. Upgrades: `git pull && npm ci && npm run build && npm start` — migrations are idempotent and forward-only.
+The app is a long-running Node server (API routes, SQLite, filesystem storage, SSE, Web Push) — it needs a host that keeps a process and a disk alive, not a static/Serverless host. Three ready paths:
+
+**1. Docker (any host / VPS / ECS / Coolify / Portainer)**
+
+```bash
+docker build -t cse-b-class .
+docker run -d --name cse-b-class -p 3000:3000 \
+  -v cseb-data:/data \
+  -e DATABASE_URL=file:/data/app.db -e STORAGE_DIR=/data/storage \
+  -e JWT_SECRET=… -e APP_ORIGIN=https://your-domain -e APP_TZ=Asia/Kolkata \
+  -e VAPID_PUBLIC_KEY=… -e VAPID_PRIVATE_KEY=… -e VAPID_SUBJECT=mailto:you@example.com \
+  cse-b-class
+# first boot only, optional demo class: add -e SEED_DEMO=1
+```
+Migrations run automatically on every boot; `/data` (volume) holds the DB + uploads.
+
+**2. Fly.io** — `fly launch` from `cse-b-class/` picks up `fly.toml` (Mumbai region, 1 GB persistent volume, always-on machine for SSE/push, health checks, release-command migrations). Then: `fly secrets set JWT_SECRET=… VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… APP_ORIGIN=https://cse-b-class.fly.dev`.
+
+**3. Render** — merge this PR, then Render → "New +" → "Blueprint" → select the repo; `render.yaml` provisions a Node service + 1 GB disk and asks you for `APP_ORIGIN` and the VAPID keys (generate them with `npm run setup` locally). Note: Render's disk requires the paid starter plan — the free plan would wipe the DB/uploads on every restart.
+
+> Why not Vercel/GitHub Pages? Serverless filesystems are ephemeral (SQLite + uploaded letters would vanish) and the repo's existing Pages workflows serve the other, static project in this repo.
+
+**Production checklist:** strong `JWT_SECRET` · VAPID keys set (push won't work without them) · `APP_ORIGIN` = public HTTPS origin · TLS in front (required for PWA install + push on iOS) · back up the database file and `STORAGE_DIR` · skip `SEED_DEMO` and onboard the real class via the Excel import.

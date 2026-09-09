@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // standalone is enabled only for Docker builds (NEXT_OUTPUT=standalone) so plain `npm start` stays unaffected
+  ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' } : {}),
   async headers() {
     return [
       {
