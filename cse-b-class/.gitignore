@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Database (schema + migrations ARE committed; database files are not)
+prisma/*.db
+prisma/*.db-journal
+*.db
+*.db-journal
+
+# Secure file storage (never in git)
+storage/
+
+# Environment / secrets
+.env
+.env.local
+.env.production
+
+# Test artifacts
+coverage/
+test.db
+test-*.db
+
+# Misc
+.DS_Store
+*.log
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# Test storage dir
+storage-test/

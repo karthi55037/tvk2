@@ -1,0 +1,528 @@
+// CSE B Class — data model.
+// SQLite default (no native enums/JSON in the SQLite connector, so status/type
+// fields are validated strings whose allowed values live in src/lib/constants.ts).
+// For Postgres production these can be converted to native enums/Json.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  username           String    @unique // students: register number; staff: advisor/admin id
+  regNo              String?   @unique // register number (students)
+  passwordHash       String
+  role               String // STUDENT | REPRESENTATIVE | ADVISOR | ADMIN
+  name               String
+  email              String?
+  dob                String? // ISO yyyy-mm-dd — students only (private)
+  bloodGroup         String? // private
+  address            String? // private
+  mobile             String?
+  mustChangePassword Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+  sessions           Session[]
+  dailyStatuses      DailyStatus[]
+  outOfClassRecords  OutOfClass[]
+  leaveRequests      LeaveRequest[]
+  odRequests         ODRequest[]
+  chatMessages       ChatMessage[]
+  notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
+  pref               NotificationPreference?
+  assignmentSubs     AssignmentSubmission[]
+  experimentComps    ExperimentCompletion[]
+  experimentRecords  ExperimentRecord[]
+  meetingRequests    MeetingRequest[] @relation("MeetingStudent")
+  visits             TeacherVisit[] @relation("VisitStudent")
+  files              FileObject[] @relation("FileOwner")
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+  ip        String?
+
+  @@index([userId])
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique
+  tempPass  String // one-time shown temp password (hashed comparison handled in service)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdById String
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Subject {
+  id           String   @id @default(cuid())
+  name         String
+  code         String   @unique
+  facultyName  String
+  facultyFloor String?
+  facultyRoom  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+  slots        TimetableSlot[]
+  items        AssignmentItem[]
+  experiments  Experiment[]
+}
+
+model TimetableSlot {
+  id         String   @id @default(cuid())
+  dayOfWeek  Int // 1=Monday .. 6=Saturday
+  period     Int // 1..8
+  subjectId  String?
+  subject    Subject? @relation(fields: [subjectId], references: [id])
+  isLab      Boolean  @default(false)
+  labName    String?
+  labFloor   String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([dayOfWeek, period])
+}
+
+model DailyStatus {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  date        String // yyyy-mm-dd (college-local)
+  status      String // PRESENT | NOT_COMING | LATE | HALF_DAY
+  reason      String? // mandatory for LATE
+  halfDayPart String? // FIRST | SECOND
+  halfDayTime String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+model OutOfClass {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id])
+  destination      String
+  reason           String // visible only to Advisor + Representatives
+  outAt            DateTime  @default(now())
+  expectedReturnAt DateTime
+  backAt           DateTime?
+  status           String    @default("OUT") // OUT | BACK | CLEARED
+  clearedById      String?
+  clearedAt        DateTime?
+
+  @@index([status])
+}
+
+model LeaveRequest {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id])
+  fromDate            String // yyyy-mm-dd
+  toDate              String
+  reason              String // private: owner + Advisor only
+  contact             String?
+  status              String    @default("PENDING") // PENDING|LETTER_PENDING|LETTER_POSTED|REP_CONFIRMED|REJECTED|WITHDRAWN
+  decidedById         String?
+  decidedAt           DateTime?
+  decisionNote        String?
+  withdrawalRequested Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+  documents           LeaveDocument[]
+
+  @@index([userId])
+}
+
+model LeaveDocument {
+  id             String    @id @default(cuid())
+  leaveId        String
+  leave          LeaveRequest @relation(fields: [leaveId], references: [id])
+  fileId         String    @unique
+  uploadedById   String
+  uploadedAt     DateTime  @default(now())
+  confirmedById  String?
+  confirmedAt    DateTime?
+}
+
+model ODRequest {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id])
+  programName         String
+  place               String
+  date                String // yyyy-mm-dd
+  fromTime            String // HH:mm
+  toTime              String // HH:mm
+  reason              String // private: owner + Advisor only
+  status              String    @default("PENDING") // PENDING|LETTER_REQUIRED|LETTER_POSTED|REP_CONFIRMED|REJECTED|WITHDRAWN
+  decidedById         String?
+  decidedAt           DateTime?
+  decisionNote        String?
+  withdrawalRequested Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+  documents           ODRequestDocument[]
+
+  @@index([userId])
+}
+
+model ODRequestDocument {
+  id            String    @id @default(cuid())
+  odId          String
+  od            ODRequest @relation(fields: [odId], references: [id])
+  fileId        String    @unique
+  uploadedById  String
+  uploadedAt    DateTime  @default(now())
+  confirmedById String?
+  confirmedAt   DateTime?
+}
+
+model Announcement {
+  id          String    @id @default(cuid())
+  title       String
+  message     String
+  link        String?
+  fileId      String?
+  createdById String
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  deletedById String?
+  reads       AnnouncementRead[]
+
+  @@index([createdAt])
+}
+
+model AnnouncementRead {
+  id             String      @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id])
+  userId         String
+  readAt         DateTime    @default(now())
+
+  @@unique([announcementId, userId])
+}
+
+// One table backs all chat modules, strictly partitioned by (threadType, threadId):
+// CLASS -> "class", ASSIGNMENT -> assignment item id, EXPERIMENT -> experiment id.
+// Modules keep independent permissions, API routes and lifecycles.
+model ChatMessage {
+  id           String    @id @default(cuid())
+  threadType   String // CLASS | ASSIGNMENT | EXPERIMENT
+  threadId     String
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  body         String?
+  fileId       String?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteNote   String?
+
+  @@index([threadType, threadId, createdAt])
+}
+
+model ChatReport {
+  id            String    @id @default(cuid())
+  messageId     String
+  reportedById  String
+  category      String // ABUSE | SPAM | INCORRECT | PRIVATE_INFO | OTHER
+  description   String?
+  status        String    @default("OPEN") // OPEN | RESOLVED | DISMISSED
+  resolvedById  String?
+  resolvedAt    DateTime?
+  resolutionNote String?
+  createdAt     DateTime  @default(now())
+
+  @@index([status])
+}
+
+model ClearingRequest {
+  id            String    @id @default(cuid())
+  scope         String // CLASS_CHAT_MESSAGE | CLASS_CHAT_FILE
+  targetId      String
+  targetPreview String
+  reason        String
+  requestedById String
+  status        String    @default("PENDING") // PENDING | EXECUTED | CANCELLED
+  executedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  approvals     ClearingApproval[]
+
+  @@index([status])
+}
+
+model ClearingApproval {
+  id          String   @id @default(cuid())
+  requestId   String
+  request     ClearingRequest @relation(fields: [requestId], references: [id])
+  approverId  String
+  approverRole String
+  decision    String // APPROVED
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@unique([requestId, approverId])
+}
+
+// "Assignment N" folder — first assignment of every subject lives in folder 1.
+model AssignmentFolder {
+  id          String    @id @default(cuid())
+  number      Int       @unique
+  status      String    @default("ACTIVE") // ACTIVE | COMPLETED
+  completedAt DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  items       AssignmentItem[]
+}
+
+model AssignmentItem {
+  id               String    @id @default(cuid())
+  folderId         String
+  folder           AssignmentFolder @relation(fields: [folderId], references: [id])
+  subjectId        String
+  subject          Subject   @relation(fields: [subjectId], references: [id])
+  title            String
+  instructions     String?
+  deadline         DateTime?
+  requiredFilesNote String?
+  createdById      String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  submissions      AssignmentSubmission[]
+  resources        AssignmentResource[]
+
+  @@unique([folderId, subjectId])
+}
+
+model AssignmentSubmission {
+  id         String   @id @default(cuid())
+  itemId     String
+  item       AssignmentItem @relation(fields: [itemId], references: [id])
+  userId     String
+  status     String // SUBMITTED | NOT_SUBMITTED
+  markedById String
+  markedAt   DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([itemId, userId])
+  @@index([userId])
+}
+
+model AssignmentResource {
+  id           String    @id @default(cuid())
+  itemId       String
+  item         AssignmentItem @relation(fields: [itemId], references: [id])
+  uploaderId   String
+  kind         String // FILE | LINK
+  title        String
+  url          String?
+  fileId       String?   @unique
+  status       String // PENDING | APPROVED | REJECTED  (students' shares start PENDING)
+  verifiedById String?
+  verifiedAt   DateTime?
+  note         String?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  @@index([itemId, status])
+}
+
+model Experiment {
+  id                String    @id @default(cuid())
+  subjectId         String
+  subject           Subject   @relation(fields: [subjectId], references: [id])
+  number            Int
+  name              String
+  details           String?
+  instructions      String?
+  requiredFilesNote String?
+  createdById       String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  completions       ExperimentCompletion[]
+  records           ExperimentRecord[]
+  resources         ExperimentResource[]
+
+  @@unique([subjectId, number])
+}
+
+model ExperimentCompletion {
+  id            String   @id @default(cuid())
+  experimentId  String
+  experiment    Experiment @relation(fields: [experimentId], references: [id])
+  userId        String
+  status        String // COMPLETED | NOT_COMPLETED
+  updatedById   String
+  updatedAt     DateTime @updatedAt
+
+  @@unique([experimentId, userId])
+  @@index([userId])
+}
+
+model ExperimentRecord {
+  id               String    @id @default(cuid())
+  experimentId     String
+  experiment       Experiment @relation(fields: [experimentId], references: [id])
+  userId           String
+  fileId           String    @unique
+  note             String?
+  status           String    @default("PENDING") // PENDING | VERIFIED | REJECTED
+  verifiedById     String?
+  verifiedAt       DateTime?
+  verificationNote String?
+  uploadedAt       DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([experimentId, userId])
+}
+
+model ExperimentResource {
+  id           String    @id @default(cuid())
+  experimentId String
+  experiment   Experiment @relation(fields: [experimentId], references: [id])
+  uploaderId   String
+  kind         String // FILE | LINK
+  title        String
+  url          String?
+  fileId       String?   @unique
+  status       String
+  verifiedById String?
+  verifiedAt   DateTime?
+  note         String?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  @@index([experimentId, status])
+}
+
+model TeacherVisit {
+  id               String    @id @default(cuid())
+  studentId        String
+  student          User      @relation("VisitStudent", fields: [studentId], references: [id])
+  teacherName      String
+  location         String
+  reason           String
+  outAt            DateTime
+  expectedReturnAt DateTime
+  returnStatus     String    @default("OUT") // OUT | RETURNED
+  returnedAt       DateTime?
+  createdById      String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([studentId])
+}
+
+model MeetingRequest {
+  id          String    @id @default(cuid())
+  studentId   String
+  student     User      @relation("MeetingStudent", fields: [studentId], references: [id])
+  message     String
+  date        String?
+  time        String?
+  location    String?
+  reason      String?
+  status      String    @default("OPEN") // OPEN | CLOSED
+  createdById String
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+
+  @@index([studentId])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  category   String
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  userId String  @id
+  user   User    @relation(fields: [userId], references: [id])
+  prefs  String // JSON map category -> boolean (default true)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorRole  String?
+  actorName  String?
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   String? // JSON
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+}
+
+model FileObject {
+  id         String    @id @default(cuid())
+  ownerId    String
+  owner      User      @relation("FileOwner", fields: [ownerId], references: [id])
+  module     String // LEAVE | OD | ASSIGNMENT | EXPERIMENT | CHAT | ANNOUNCEMENT | IMPORT
+  entityId   String?
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String    @unique
+  sha256     String?
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  @@index([module, entityId])
+}
+
+model PushSubscription {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  endpoint  String    @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+}
+
+model Setting {
+  key   String @id
+  value String
+}
